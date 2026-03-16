@@ -1,0 +1,34 @@
+# Global configuration for WSL2 virtual machine
+# This file controls resource limits for ALL WSL instances
+# including docker-desktop and docker-desktop-data.
+[wsl2]
+
+# Maximum RAM available to the WSL2 virtual machine.
+# Docker containers (MongoDB, Redis, Neo4j, etc.) will share this memory.
+# The VM will NOT reserve it permanently; it grows on demand.
+memory=8GB
+
+# Number of CPU threads available to WSL.
+# Our machines have many cores, so we allow more threads for DB workloads.
+processors=4
+
+# Swap file size used by WSL when RAM is exhausted.
+# Small swap helps avoid crashes but keeps SSD usage low.
+swap=8GB
+
+# Allows services running in WSL (Docker containers) to be accessible
+# from Windows via localhost.
+# Example: http://localhost:7474 (Neo4j) or http://localhost:27017 (MongoDB)
+localhostforwarding=true
+
+# Enables nested virtualization support.
+# Not required for this project, but harmless if enabled.
+nestedVirtualization=false
+
+# Experimental WSL features
+[experimental]
+
+# Forces WSL to aggressively release unused memory back to Windows.
+# This prevents Docker/WSL from permanently occupying large amounts of RAM.
+# Recommended for development machines with Docker.
+autoMemoryReclaim=dropCache
