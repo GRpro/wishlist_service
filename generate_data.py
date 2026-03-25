@@ -86,8 +86,10 @@ def generate_test_data():
     logging.info("✅ Генерація успішно завершена!")
     logging.info(f"Створено юзерів: {NUM_USERS}, Унікальних бажань: {NUM_UNIQUE_ITEMS}, Всього зв'язків: {TOTAL_WISHES}")
     
-    test_user = random.choice(users_pool)
-    logging.info(f"Для тестування візьміть User ID: {test_user}")
+    random_users = random.sample(users_pool, 10)
+    logging.info("Для тестування використовуйте один з наступних User ID:")
+    for uid in random_users:
+        print(uid)
 
 if __name__ == "__main__":
     generate_test_data()

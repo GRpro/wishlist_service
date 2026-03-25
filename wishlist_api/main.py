@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from bson import ObjectId
@@ -10,12 +11,21 @@ from shared_dal.neo4j_client import Neo4jClient
 
 app = FastAPI(title="Wishlist Service", version="1.0.0")
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 mongo = MongoDBClient()
 redis_cache = RedisCache()
 neo4j_graph = Neo4jClient()
 
 def serialize_doc(doc):
-    doc["_id"] = str(doc["_id"])
+    if "_id" in doc:
+        doc["id"] = str(doc.pop("_id"))
     return doc
 
 class WishRequest(BaseModel):
@@ -24,7 +34,7 @@ class WishRequest(BaseModel):
     tags: Optional[List[str]] = []
 
 class WishResponse(WishRequest):
-    id: str = Field(alias="_id")
+    id: str
     user_id: str
 
 @app.post("/v1/wishes", response_model=WishResponse)
@@ -88,7 +98,7 @@ def delete_wish(user_id: str, wish_id: str):
     Видаляє бажання з MongoDB, прибирає зв'язок з графа та чистить кеш.
     """
     wishes_col = mongo.get_wishes_collection()
-    
+
     wish_to_delete = wishes_col.find_one({"_id": ObjectId(wish_id), "user_id": user_id})
     if not wish_to_delete:
         raise HTTPException(status_code=404, detail="Wish not found or access denied")

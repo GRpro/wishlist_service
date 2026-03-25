@@ -1,6 +1,6 @@
 version: '3.8'
 
-services: 
+services:
   mongodb:
     image: mongo:6.0
     container_name: wishlist_mongo
@@ -90,6 +90,20 @@ services:
       - mongodb
       - redis
       - neo4j
+    networks:
+      - wishlist_net
+
+  wishlist-ui:
+    build:
+      context: .
+      dockerfile: wishlist_ui/Dockerfile
+    container_name: wishlist_ui
+    restart: unless-stopped
+    ports:
+      - "8082:80"
+    depends_on:
+      - wishlist-service
+      - reco-service
     networks:
       - wishlist_net
 

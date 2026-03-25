@@ -1,8 +1,10 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
 from datetime import datetime
 import logging
+logging.basicConfig(level=logging.INFO)
 
 from shared_dal.mongo_client import MongoDBClient
 from shared_dal.redis_client import RedisCache
@@ -10,9 +12,20 @@ from shared_dal.neo4j_client import Neo4jClient
 
 app = FastAPI(title="Recommendation Gateway Service", version="1.0.0")
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 mongo = MongoDBClient()
 redis_cache = RedisCache()
 neo4j_graph = Neo4jClient()
+
+RECOMMENDATIONS_CACHE_TTL_SECONDS = 30
+RECOMMENDATIONS_MONGO_TTL_SECONDS = 60
 
 class RecommendationItem(BaseModel):
     url: str
@@ -25,6 +38,7 @@ def get_recommendations(user_id: str):
     """
     Агрегуючий ендпоінт.
     1. Перевіряє Redis (Швидкий кеш).
+    2. Якщо пусто - перевіряємо MongoDB
     2. Якщо пусто - запускає алгоритм Jaccard у Neo4j.
     3. Збагачує результати даними з MongoDB.
     4. Зберігає знімок (snapshot) у Mongo та оновлює Redis.
@@ -36,7 +50,25 @@ def get_recommendations(user_id: str):
         logging.info(f"Cache HIT for recommendations: User {user_id}")
         return cached_reco
 
-    logging.info(f"Cache MISS. Calculating Jaccard Collaborative Filtering for User {user_id}...")
+    logging.info(f"Cache MISS. Checking MongoDB for User {user_id}...")
+    
+    # Пошук рекомендацій у MongoDB
+    mongo_reco = mongo.get_user_recommendations_collection().find_one({"user_id": user_id})
+    if mongo_reco:
+        calculated_at = mongo_reco["calculated_at"]
+        age_seconds = (datetime.utcnow() - calculated_at).total_seconds()
+        if age_seconds < RECOMMENDATIONS_MONGO_TTL_SECONDS:
+            recommendations = mongo_reco.get("recommendations", [])
+            if recommendations:
+                # Встановлюємо в Redis лише залишок часу життя з MongoDB
+                remaining_ttl = int(RECOMMENDATIONS_MONGO_TTL_SECONDS - age_seconds)
+                logging.info(f"Getting recommendations from MongoDB. Key: {cache_key}, Remaining: {remaining_ttl}s")
+                redis_cache.set_json(cache_key, recommendations, ttl_seconds=max(1, remaining_ttl))
+                return recommendations
+        else:
+            logging.info(f"Existing recommendations in MongoDB are stale. Recomputing...")
+
+    logging.info(f"Calculating Jaccard Collaborative Filtering for User {user_id}...")
 
     # Обчислення Collaborative Filtering (Jaccard) у Neo4j
     cypher_query = """
@@ -104,7 +136,7 @@ def get_recommendations(user_id: str):
         upsert=True
     )
 
-    redis_cache.set_json(cache_key, final_recommendations, ttl_seconds=3600)
+    redis_cache.set_json(cache_key, final_recommendations, ttl_seconds=RECOMMENDATIONS_CACHE_TTL_SECONDS)
 
     logging.info(f"Successfully generated and cached {len(final_recommendations)} recommendations.")
     return final_recommendations
